@@ -52,8 +52,19 @@ everything not explicitly trusted — same default-deny posture as the permissio
 
 ## Phase 2 — caller context and the resolution engine
 
-_This is where most people's first model is wrong. Write down the model you started with, the
-observation that broke it, and the model you moved to. Be specific about the observation._
+Built `permissions.js` — the single source of truth for allow/deny. Key design decisions:
+
+1. Wildcards are expanded at resolution time against the live permissions table, not hardcoded.
+   This is what makes the personalised org (undocumented role + permission) work correctly.
+
+2. Deny wins regardless of scope (D1). An org-wide deny cannot be carved out by a device-scoped
+   allow. The check-permissions.js suite has an explicit test for this: `g_carve` grant.
+
+3. `resolveOrgLevel` takes the union across all devices — a permission is allowed at org level
+   if it is allowed on ANY device. This is what drives nav visibility in the SPA.
+
+4. `assertCanStartSession` throws with specific reason strings (`missing_permission` vs
+   `missing_device_permission`) because the shipped tests assert those exact strings.
 
 ## Phase 3 — orgs, members, invites
 
