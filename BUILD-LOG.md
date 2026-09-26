@@ -68,8 +68,21 @@ Built `permissions.js` — the single source of truth for allow/deny. Key design
 
 ## Phase 3 — orgs, members, invites
 
-_Anything you had to work out that no document states. Invite lifecycle states are a common
-source of this._
+Built all org/member/invite routes. Key things that were not obvious from the docs:
+
+Invite accept returns `{token, accessToken, role}` — same shape as login. The test reads
+`accept.body.role` directly, so the role must be at the top level, not nested under a user object.
+The raw invite token is returned once at creation as `inviteToken` (not `token`) — the field name
+matters because the test reads `inv.body.inviteToken`.
+
+Owner rank rule: PERMISSIONS.md §6 says non-owners need strictly lower rank to modify a target.
+My first read was that owners also needed lower rank. The test `demoting a NON-last owner is allowed`
+disproved that — owners can modify any other member including other owners, except themselves.
+`assertCanModify` now only applies the rank check for non-owners.
+
+Audit pagination: limit must be 1–200 inclusive; offset must be >= 0. `limit=0` and `offset=99999`
+are both tested — the former is a 400, the latter is a 200 (large offset is valid, just returns
+an empty page). Clamping would have passed the 400 cases and silently broken the 200 case.
 
 ## Phase 4 — devices and grants
 
