@@ -86,8 +86,19 @@ an empty page). Clamping would have passed the 400 cases and silently broken the
 
 ## Phase 4 — devices and grants
 
-_What happens at the boundary where two grants disagree, or where a grant's scope and the
-question's scope differ? Say what you predicted and what you got._
+The unknown-permission check must happen BEFORE the laundering check. My first implementation
+inserted the grant and relied on the FK constraint to catch bad permission strings. That produced
+a 500 (unhandled FK error) instead of a 400. Moving the catalogue validation loop before the
+laundering loop fixed it.
+
+The second issue: the FK-path fallback also used `Object.assign(new Error(), {...})` instead of
+`new HttpError(...)`. `sendError` checks `instanceof HttpError` — a plain Error with a `.status`
+property is not an instance, so it fell through to the 500 branch. All error throws in the grants
+route now use `new HttpError(status, code, message, reason)` directly.
+
+Grant scope: a device-scoped grant only applies when `deviceId` matches. The resolution engine
+already handles this (D1 deny wins regardless of scope), so the grant route just needs to store
+`device_id` correctly and let `resolve()` do the rest.
 
 ## Phase 5 — sessions
 
