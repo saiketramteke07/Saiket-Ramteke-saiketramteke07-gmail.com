@@ -102,12 +102,32 @@ already handles this (D1 deny wins regardless of scope), so the grant route just
 
 ## Phase 5 — sessions
 
-_Two permissions, one device. What did you have to resolve, and in what order, to keep the two
-failure reasons distinguishable?_
+`assertCanStartSession` must distinguish two failure reasons: `missing_permission` (caller lacks
+`session:start` at org level) vs `missing_device_permission` (caller has `session:start` but not
+`device:control` or `device:view` on the specific device). The check order matters — org-level
+check first, then device-level, so the reason string is always the most specific one that applies.
+
+Exclusive session conflict (D10): a second `control` session on a device that already has an
+active `control` session returns 409 `DEVICE_BUSY`. `view` sessions are not exclusive — two
+concurrent view sessions on the same device return 201. The session start route queries
+`active_sessions` for an existing exclusive session before inserting.
+
+The GET /sessions/:id test reads flat fields (`session.mode`, `session.device_id`) directly on
+the response body, not nested under a `session` key. Returning `{session: {...}}` caused the
+test to fail; returning `{...session}` (spread) fixed it.
 
 ## Phase 6 — audit
 
-_What did you decide counts as an auditable event, and what pushed you to that line?_
+Every state-changing action writes an audit event: login, token refresh, org create, member
+role change, suspend/reinstate/remove, invite create/accept, device provision/update/delete/
+transfer, grant create/revoke, session start/end. Read-only GETs are not audited.
+
+Denied attempts are also audited — `check-api.js` asserts that a failed session start appears
+in the audit log with `result: 'deny'` and a `reason` field. The audit write happens in the
+route handler after the permission check throws, inside the catch block, before re-throwing.
+
+The `reason` column carries the same reason string as the error response so the audit log is
+self-contained without joining to the error table.
 
 ## Phase 7 — the console
 
