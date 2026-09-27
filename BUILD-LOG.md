@@ -131,14 +131,49 @@ self-contained without joining to the error table.
 
 ## Phase 7 — the console
 
-_Where did the server's answer and your instinct disagree about what should be on screen?_
+The SPA renders panels based on what the caller can actually do — no disabled buttons, just
+absent ones. `resolveOrgLevel` drives this: if `device:view` is not in the allowed set at org
+level, the Devices panel is not rendered at all.
+
+Per-org theme colour comes from `orgs.theme_color` in the DB. The app shell sets
+`data-org-theme` on the root element so CSS variables can be scoped per org without a full
+re-render. The org switcher re-fetches `/auth/me` on switch to get the new org's permissions
+and theme.
+
+The `data-testid` attributes are load-bearing — the personalisation suite queries them directly.
+Any mismatch between the attribute name in the test and the JSX causes a silent miss (element
+not found) rather than an assertion error, which is harder to debug.
 
 ## Phase 8 — hardening
 
-_What did you measure, what did you fix, and what did you deliberately leave alone? Anything you
-chose not to build belongs here with its reason._
+`PRAGMA foreign_keys = ON` is set at connection open in `db.js`. Without it, the FK on
+`grant_permissions.permission` never fires and unknown permissions silently insert. Verified
+by temporarily removing the pragma and confirming the FK test no longer raises.
+
+`timingSafeEqual` is used for signature comparison in `verifyAccessToken`. A naive `===`
+comparison leaks timing information proportional to the length of the common prefix — an
+attacker can brute-force the signature one byte at a time. `timingSafeEqual` runs in constant
+time regardless of where the strings diverge.
+
+Invite tokens are hashed before storage (`hashPassword` / bcrypt). The raw token is returned
+once at creation and never stored in plaintext. A DB read cannot recover the token — only the
+original recipient can accept the invite.
+
+Deliberately not hardened: rate limiting (out of scope per README), request size beyond the
+1 MB cap already in `readJson`, and CORS headers (single-origin dev setup).
 
 ## Open threads
 
-_Things you know are wrong, unfinished, or that you would do differently with another day. Listing
-these honestly is worth more than pretending they do not exist — we will find them anyway._
+- The `endDeviceSessions` call on device delete uses `device_transferred` as the end reason
+  even for a plain delete. Should be `device_deleted` — low risk since the device is soft-deleted
+  and sessions are already ended, but the audit reason string is misleading.
+
+- `resolveOrgLevel` iterates all devices to union permissions. For orgs with thousands of
+  devices this is O(n) queries. A single SQL query with GROUP BY would be more efficient.
+  Not a problem at fixture scale.
+
+- The SPA has no loading states — it renders empty panels while fetching. Acceptable for a
+  hackathon console but would need skeleton screens in production.
+
+- Refresh token rotation is not implemented. The refresh endpoint issues a new access token
+  but reuses the same refresh token. A stolen refresh token remains valid until expiry.
